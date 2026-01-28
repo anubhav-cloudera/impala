@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "impala.fullname" . }}-impalad
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: beeswax
+      port: 21000
+      targetPort: beeswax
+    - name: hs2
+      port: 21050
+      targetPort: hs2
+    - name: web
+      port: 25000
+      targetPort: web
+    - name: hs2-http
+      port: 28000
+      targetPort: hs2-http
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/name: {{ include "impala.name" . }}
+    app.kubernetes.io/component: impalad

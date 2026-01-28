@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "impala.fullname" . }}-catalogd
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: rpc
+      port: 26000
+      targetPort: rpc
+    - name: web
+      port: 25020
+      targetPort: web
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/name: {{ include "impala.name" . }}
+    app.kubernetes.io/component: catalogd

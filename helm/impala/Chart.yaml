@@ -1,0 +1,6 @@
+apiVersion: v2
+name: impala
+description: Minimal Impala quickstart deployment (HMS, statestored, catalogd, impalad)
+type: application
+version: 0.1.0
+appVersion: "quickstart"

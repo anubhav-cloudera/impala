@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "impala.fullname" . }}-conf
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+data:
+  hive-site.xml: |
+{{ .Files.Get "files/hive-site.xml" | indent 4 }}

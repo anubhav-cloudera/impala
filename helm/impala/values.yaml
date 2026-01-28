@@ -1,0 +1,42 @@
+image:
+  # Optional prefix for published images, e.g. "apache/impala:81d5377c2-"
+  # Leave empty to use locally built image names like "statestored".
+  prefix: ""
+  pullPolicy: IfNotPresent
+
+persistence:
+  enabled: true
+  storageClassName: ""
+  size: 10Gi
+  accessModes:
+    - ReadWriteOnce
+
+impalad:
+  memLimit: "4gb"
+  javaToolOptions: "-Xmx1g"
+  defaultQueryOptions: "mt_dop=4,default_file_format=parquet,default_transactional_type=insert_only"
+  mtDopAutoFallback: true
+  # Optional Kudu master hosts. Set to enable Kudu integration.
+  kuduMasterHosts: ""
+  extraArgs: []
+
+catalogd:
+  hmsEventPollingIntervalS: 1
+  invalidateTablesTimeoutS: 999999
+  extraArgs: []
+
+statestored:
+  extraArgs: []
+
+hms:
+  extraArgs: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+statestore:
+  host: ""
+
+catalog:
+  host: ""

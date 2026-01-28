@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "impala.fullname" . }}-statestored
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: {{ include "impala.name" . }}
+      app.kubernetes.io/component: statestored
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/name: {{ include "impala.name" . }}
+        app.kubernetes.io/component: statestored
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      containers:
+        - name: statestored
+          image: {{ include "impala.image" (dict "Values" .Values "imageName" "statestored") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - -redirect_stdout_stderr=false
+            - -logtostderr
+            - -v=1
+{{- range .Values.statestored.extraArgs }}
+            - {{ . | quote }}
+{{- end }}
+          ports:
+            - name: rpc
+              containerPort: 24000
+            - name: web
+              containerPort: 25010
+          volumeMounts:
+            - name: conf
+              mountPath: /opt/impala/conf/hive-site.xml
+              subPath: hive-site.xml
+      volumes:
+        - name: conf
+          configMap:
+            name: {{ include "impala.fullname" . }}-conf

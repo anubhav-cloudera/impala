@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "impala.fullname" . }}-catalogd
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: {{ include "impala.name" . }}
+      app.kubernetes.io/component: catalogd
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/name: {{ include "impala.name" . }}
+        app.kubernetes.io/component: catalogd
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      containers:
+        - name: catalogd
+          image: {{ include "impala.image" (dict "Values" .Values "imageName" "catalogd") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - -redirect_stdout_stderr=false
+            - -logtostderr
+            - -v=1
+            - -state_store_host={{ .Values.statestore.host | default (printf "%s-statestored" (include "impala.fullname" .)) }}
+            - -hms_event_polling_interval_s={{ .Values.catalogd.hmsEventPollingIntervalS }}
+            - -invalidate_tables_timeout_s={{ .Values.catalogd.invalidateTablesTimeoutS }}
+{{- range .Values.catalogd.extraArgs }}
+            - {{ . | quote }}
+{{- end }}
+          ports:
+            - name: rpc
+              containerPort: 26000
+            - name: web
+              containerPort: 25020
+          volumeMounts:
+            - name: warehouse
+              mountPath: /user/hive/warehouse
+            - name: conf
+              mountPath: /opt/impala/conf/hive-site.xml
+              subPath: hive-site.xml
+      volumes:
+        - name: conf
+          configMap:
+            name: {{ include "impala.fullname" . }}-conf
+        - name: warehouse
+{{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "impala.fullname" . }}-warehouse
+{{- else }}
+          emptyDir: {}
+{{- end }}

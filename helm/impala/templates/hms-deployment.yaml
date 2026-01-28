@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "impala.fullname" . }}-hms
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: {{ include "impala.name" . }}
+      app.kubernetes.io/component: hms
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/name: {{ include "impala.name" . }}
+        app.kubernetes.io/component: hms
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      containers:
+        - name: hms
+          image: {{ include "impala.image" (dict "Values" .Values "imageName" "impala_quickstart_hms") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - hms
+{{- range .Values.hms.extraArgs }}
+            - {{ . | quote }}
+{{- end }}
+          ports:
+            - name: thrift
+              containerPort: 9083
+          volumeMounts:
+            - name: warehouse
+              mountPath: /var/lib/hive
+            - name: warehouse
+              mountPath: /user/hive/warehouse
+            - name: conf
+              mountPath: /opt/hive/conf/hive-site.xml
+              subPath: hive-site.xml
+      volumes:
+        - name: conf
+          configMap:
+            name: {{ include "impala.fullname" . }}-conf
+        - name: warehouse
+{{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "impala.fullname" . }}-warehouse
+{{- else }}
+          emptyDir: {}
+{{- end }}
