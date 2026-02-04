@@ -108,6 +108,9 @@ eclipse-classes/
 ad-hoc.test
 nohup.out
 
+# Java build outputs
+java/**/bin/
+
 # Python virtualenvs
 gerrit_critic_venv
 

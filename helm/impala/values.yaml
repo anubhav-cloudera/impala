@@ -12,10 +12,11 @@ persistence:
     - ReadWriteOnce
 
 impalad:
-  memLimit: "4gb"
-  javaToolOptions: "-Xmx1g"
+  memLimit: "8gb"
+  javaToolOptions: "-Xmx2g"
   defaultQueryOptions: "mt_dop=4,default_file_format=parquet,default_transactional_type=insert_only"
   mtDopAutoFallback: true
+  rpcUseLoopback: false
   # Optional Kudu master hosts. Set to enable Kudu integration.
   kuduMasterHosts: ""
   extraArgs: []
@@ -40,3 +41,59 @@ statestore:
 
 catalog:
   host: ""
+
+auth:
+  tls:
+    enabled: false
+    # TLS secret with keys: tls.crt, tls.key, ca.crt
+    secretName: impala-tls
+    certFile: tls.crt
+    keyFile: tls.key
+    caFile: ca.crt
+  ldap:
+    enabled: false
+    uri: ""
+    baseDN: ""
+    userSearchBaseDN: ""
+    bindDN: ""
+    # Secret containing the LDAP bind password.
+    bindPasswordSecret: impala-ldap-bind
+    bindPasswordKey: bind_password
+    # Optional: create the bind password secret from values.
+    bindPasswordSecretCreate: false
+    bindPassword: ""
+    # Non-prod override for plain LDAP (no TLS). Impala will exit without this.
+    allowCleartextPassword: true
+    # TLS settings for LDAP (ldaps:// or STARTTLS).
+    tlsEnabled: false
+    caFile: ""
+    caSecretName: ""
+    userFilter: ""
+    groupFilter: ""
+    searchBindAuthentication: true
+
+ldapServer:
+  enabled: false
+  image: osixia/openldap:1.5.0
+  organisation: "Impala"
+  domain: "example.com"
+  adminPassword: "admin"
+  configPassword: "config"
+  tls:
+    enabled: false
+    # Secret with keys: tls.crt, tls.key, ca.crt
+    secretName: impala-ldap-tls
+    certFile: tls.crt
+    keyFile: tls.key
+    caFile: ca.crt
+  seedUser:
+    uid: impalauser
+    password: impala123
+    givenName: Impala
+    sn: User
+  persistence:
+    enabled: false
+    size: 2Gi
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: ""

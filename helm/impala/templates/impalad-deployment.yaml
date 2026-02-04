@@ -40,12 +40,46 @@ spec:
             - -logtostderr
             - -state_store_host={{ .Values.statestore.host | default (printf "%s-statestored" (include "impala.fullname" .)) }}
             - -catalog_service_host={{ .Values.catalog.host | default (printf "%s-catalogd" (include "impala.fullname" .)) }}
+{{- if .Values.auth.tls.enabled }}
+            - -ssl_server_certificate=/etc/impala/tls/{{ .Values.auth.tls.certFile }}
+            - -ssl_private_key=/etc/impala/tls/{{ .Values.auth.tls.keyFile }}
+{{- if .Values.auth.tls.caFile }}
+            - -ssl_client_ca_certificate=/etc/impala/tls/{{ .Values.auth.tls.caFile }}
+{{- end }}
+{{- end }}
+{{- if .Values.auth.ldap.enabled }}
+            - -enable_ldap_auth=true
+            - -ldap_uri={{ .Values.auth.ldap.uri }}
+            - -ldap_baseDN={{ .Values.auth.ldap.baseDN }}
+            - -ldap_bind_dn={{ .Values.auth.ldap.bindDN }}
+            - -ldap_bind_password_cmd=cat /etc/impala/ldap/{{ .Values.auth.ldap.bindPasswordKey }}
+            - -ldap_search_bind_authentication={{ .Values.auth.ldap.searchBindAuthentication | default true }}
+{{- if .Values.auth.ldap.allowCleartextPassword }}
+            - -ldap_passwords_in_clear_ok=true
+{{- end }}
+{{- if .Values.auth.ldap.tlsEnabled }}
+            - -ldap_tls=true
+{{- if .Values.auth.ldap.caFile }}
+            - -ldap_ca_certificate=/etc/impala/ldap-ca/{{ .Values.auth.ldap.caFile }}
+{{- end }}
+{{- end }}
+{{- if .Values.auth.ldap.userSearchBaseDN }}
+            - -ldap_user_search_basedn={{ .Values.auth.ldap.userSearchBaseDN }}
+{{- end }}
+{{- if .Values.auth.ldap.userFilter }}
+            - -ldap_user_filter={{ .Values.auth.ldap.userFilter }}
+{{- end }}
+{{- if .Values.auth.ldap.groupFilter }}
+            - -ldap_group_filter={{ .Values.auth.ldap.groupFilter }}
+{{- end }}
+{{- end }}
 {{- if .Values.impalad.kuduMasterHosts }}
             - -kudu_master_hosts={{ .Values.impalad.kuduMasterHosts }}
 {{- end }}
             - -mt_dop_auto_fallback={{ .Values.impalad.mtDopAutoFallback | default true }}
             - -default_query_options={{ .Values.impalad.defaultQueryOptions }}
             - -mem_limit={{ .Values.impalad.memLimit }}
+            - -rpc_use_loopback={{ .Values.impalad.rpcUseLoopback | default false }}
 {{- range .Values.impalad.extraArgs }}
             - {{ . | quote }}
 {{- end }}
@@ -67,6 +101,21 @@ spec:
             - name: conf
               mountPath: /opt/impala/conf/hive-site.xml
               subPath: hive-site.xml
+{{- if .Values.auth.tls.enabled }}
+            - name: tls
+              mountPath: /etc/impala/tls
+              readOnly: true
+{{- end }}
+{{- if .Values.auth.ldap.enabled }}
+            - name: ldap
+              mountPath: /etc/impala/ldap
+              readOnly: true
+{{- end }}
+{{- if and .Values.auth.ldap.enabled .Values.auth.ldap.tlsEnabled .Values.auth.ldap.caFile }}
+            - name: ldap-ca
+              mountPath: /etc/impala/ldap-ca
+              readOnly: true
+{{- end }}
       volumes:
         - name: conf
           configMap:
@@ -77,4 +126,19 @@ spec:
             claimName: {{ include "impala.fullname" . }}-warehouse
 {{- else }}
           emptyDir: {}
+{{- end }}
+{{- if .Values.auth.tls.enabled }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.auth.tls.secretName }}
+{{- end }}
+{{- if .Values.auth.ldap.enabled }}
+        - name: ldap
+          secret:
+            secretName: {{ .Values.auth.ldap.bindPasswordSecret }}
+{{- end }}
+{{- if and .Values.auth.ldap.enabled .Values.auth.ldap.tlsEnabled .Values.auth.ldap.caFile }}
+        - name: ldap-ca
+          secret:
+            secretName: {{ .Values.auth.ldap.caSecretName | default .Values.ldapServer.tls.secretName }}
 {{- end }}

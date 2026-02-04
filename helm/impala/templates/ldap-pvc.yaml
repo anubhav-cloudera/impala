@@ -1,0 +1,33 @@
+{{- if .Values.ldapServer.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "impala.fullname" . }}-ldap-data
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  accessModes:
+{{ toYaml .Values.ldapServer.persistence.accessModes | indent 4 }}
+{{- if .Values.ldapServer.persistence.storageClassName }}
+  storageClassName: {{ .Values.ldapServer.persistence.storageClassName | quote }}
+{{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.ldapServer.persistence.size }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "impala.fullname" . }}-ldap-config
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  accessModes:
+{{ toYaml .Values.ldapServer.persistence.accessModes | indent 4 }}
+{{- if .Values.ldapServer.persistence.storageClassName }}
+  storageClassName: {{ .Values.ldapServer.persistence.storageClassName | quote }}
+{{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.ldapServer.persistence.size }}
+{{- end }}

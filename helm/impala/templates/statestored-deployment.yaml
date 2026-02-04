@@ -38,6 +38,13 @@ spec:
             - -redirect_stdout_stderr=false
             - -logtostderr
             - -v=1
+{{- if .Values.auth.tls.enabled }}
+            - -ssl_server_certificate=/etc/impala/tls/{{ .Values.auth.tls.certFile }}
+            - -ssl_private_key=/etc/impala/tls/{{ .Values.auth.tls.keyFile }}
+{{- if .Values.auth.tls.caFile }}
+            - -ssl_client_ca_certificate=/etc/impala/tls/{{ .Values.auth.tls.caFile }}
+{{- end }}
+{{- end }}
 {{- range .Values.statestored.extraArgs }}
             - {{ . | quote }}
 {{- end }}
@@ -50,7 +57,17 @@ spec:
             - name: conf
               mountPath: /opt/impala/conf/hive-site.xml
               subPath: hive-site.xml
+{{- if .Values.auth.tls.enabled }}
+            - name: tls
+              mountPath: /etc/impala/tls
+              readOnly: true
+{{- end }}
       volumes:
         - name: conf
           configMap:
             name: {{ include "impala.fullname" . }}-conf
+{{- if .Values.auth.tls.enabled }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.auth.tls.secretName }}
+{{- end }}

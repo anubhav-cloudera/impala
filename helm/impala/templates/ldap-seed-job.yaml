@@ -1,0 +1,51 @@
+{{- if and .Values.ldapServer.enabled .Values.ldapServer.seedUser.uid }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "impala.fullname" . }}-ldap-seed
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/name: {{ include "impala.name" . }}
+        app.kubernetes.io/component: ldap-seed
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: {{ .Values.ldapServer.image }}
+          command: ["/bin/bash","-lc"]
+          args:
+            - |
+              set -euo pipefail
+              LDAP_URI="ldap://{{ include "impala.fullname" . }}-ldap:389"
+              BASE_DN="dc={{ replace "." ",dc=" .Values.ldapServer.domain }}"
+              ADMIN_DN="cn=admin,${BASE_DN}"
+
+              for i in $(seq 60); do
+                if ldapsearch -x -H "${LDAP_URI}" -D "${ADMIN_DN}" -w {{ .Values.ldapServer.adminPassword | quote }} -b "${BASE_DN}" -s base "(objectClass=*)" >/dev/null 2>&1; then
+                  break
+                fi
+                sleep 2
+              done
+
+              cat >/tmp/seed.ldif <<LDIF
+              dn: ou=People,${BASE_DN}
+              objectClass: organizationalUnit
+              ou: People
+
+              dn: uid={{ .Values.ldapServer.seedUser.uid }},ou=People,${BASE_DN}
+              objectClass: inetOrgPerson
+              uid: {{ .Values.ldapServer.seedUser.uid }}
+              sn: {{ .Values.ldapServer.seedUser.sn }}
+              givenName: {{ .Values.ldapServer.seedUser.givenName }}
+              cn: {{ .Values.ldapServer.seedUser.givenName }} {{ .Values.ldapServer.seedUser.sn }}
+              userPassword: {{ .Values.ldapServer.seedUser.password }}
+              LDIF
+
+              ldapadd -x -H "${LDAP_URI}" -D "${ADMIN_DN}" -w {{ .Values.ldapServer.adminPassword | quote }} -f /tmp/seed.ldif || true
+{{- end }}

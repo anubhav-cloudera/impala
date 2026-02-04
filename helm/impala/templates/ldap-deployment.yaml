@@ -1,0 +1,95 @@
+{{- if .Values.ldapServer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "impala.fullname" . }}-ldap
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: {{ include "impala.name" . }}
+      app.kubernetes.io/component: ldap
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/name: {{ include "impala.name" . }}
+        app.kubernetes.io/component: ldap
+    spec:
+{{- if .Values.ldapServer.tls.enabled }}
+      initContainers:
+        - name: tls-copy
+          image: {{ .Values.ldapServer.image }}
+          command: ["/bin/bash","-lc"]
+          args:
+            - |
+              set -euo pipefail
+              cp /seed-certs/tls.crt /ldap-certs/tls.crt
+              cp /seed-certs/tls.key /ldap-certs/tls.key
+              cp /seed-certs/ca.crt /ldap-certs/ca.crt
+          volumeMounts:
+            - name: ldap-tls-seed
+              mountPath: /seed-certs
+            - name: ldap-tls
+              mountPath: /ldap-certs
+{{- end }}
+      containers:
+        - name: ldap
+          image: {{ .Values.ldapServer.image }}
+          env:
+            - name: LDAP_ORGANISATION
+              value: {{ .Values.ldapServer.organisation | quote }}
+            - name: LDAP_DOMAIN
+              value: {{ .Values.ldapServer.domain | quote }}
+            - name: LDAP_ADMIN_PASSWORD
+              value: {{ .Values.ldapServer.adminPassword | quote }}
+            - name: LDAP_CONFIG_PASSWORD
+              value: {{ .Values.ldapServer.configPassword | quote }}
+            - name: LDAP_TLS
+              value: {{ ternary "true" "false" .Values.ldapServer.tls.enabled | quote }}
+{{- if .Values.ldapServer.tls.enabled }}
+            - name: LDAP_TLS_CRT_FILENAME
+              value: {{ .Values.ldapServer.tls.certFile | quote }}
+            - name: LDAP_TLS_KEY_FILENAME
+              value: {{ .Values.ldapServer.tls.keyFile | quote }}
+            - name: LDAP_TLS_CA_CRT_FILENAME
+              value: {{ .Values.ldapServer.tls.caFile | quote }}
+            - name: LDAP_TLS_VERIFY_CLIENT
+              value: "never"
+{{- end }}
+          ports:
+            - name: ldap
+              containerPort: 389
+            - name: ldaps
+              containerPort: 636
+{{- if .Values.ldapServer.tls.enabled }}
+          volumeMounts:
+            - name: ldap-tls
+              mountPath: /container/service/slapd/assets/certs
+{{- end }}
+{{- if .Values.ldapServer.persistence.enabled }}
+            - name: ldap-data
+              mountPath: /var/lib/ldap
+            - name: ldap-config
+              mountPath: /etc/ldap/slapd.d
+{{- end }}
+      volumes:
+{{- if .Values.ldapServer.tls.enabled }}
+        - name: ldap-tls-seed
+          secret:
+            secretName: {{ .Values.ldapServer.tls.secretName }}
+        - name: ldap-tls
+          emptyDir: {}
+{{- end }}
+{{- if .Values.ldapServer.persistence.enabled }}
+        - name: ldap-data
+          persistentVolumeClaim:
+            claimName: {{ include "impala.fullname" . }}-ldap-data
+        - name: ldap-config
+          persistentVolumeClaim:
+            claimName: {{ include "impala.fullname" . }}-ldap-config
+{{- end }}
+{{- end }}

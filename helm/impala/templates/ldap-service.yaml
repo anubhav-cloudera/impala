@@ -1,0 +1,21 @@
+{{- if .Values.ldapServer.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "impala.fullname" . }}-ldap
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: ldap
+      port: 389
+      targetPort: ldap
+    - name: ldaps
+      port: 636
+      targetPort: ldaps
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/name: {{ include "impala.name" . }}
+    app.kubernetes.io/component: ldap
+{{- end }}
