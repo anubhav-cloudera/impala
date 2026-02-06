@@ -266,6 +266,241 @@ ssh -i ${SSH_KEY} ${SSH_USER}@${HOST_IP} \
 #   --impalad=impala-impala-impalad.impala.svc.cluster.local:21000 \
 #   --query "show tables in kudu;"
 
+### 4c.3 Ensure `reason` exists in Parquet (needed by TPC-DS)
+The quickstart loader does not create `reason`. Add it once:
+```bash
+ssh -i ${SSH_KEY} ${SSH_USER}@${HOST_IP} <<'EOF'
+kubectl -n impala delete pod tpcds-reason-load --ignore-not-found
+cat <<'YAML' | kubectl -n impala apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tpcds-reason-load
+spec:
+  restartPolicy: Never
+  containers:
+    - name: loader
+      image: apache/impala:4.5.0-impala_quickstart_client
+      command: ["/bin/bash","-lc"]
+      args:
+        - |
+          set -euo pipefail
+          impala-shell --protocol=beeswax --ssl --ca_cert=/etc/impala/tls/ca.crt \
+            --ldap --user impalauser --ldap_password_cmd="echo -n impala123" \
+            -i impala-impala-impalad.impala.svc.cluster.local:21000 <<'SQL'
+          create database if not exists tpcds_raw;
+          drop table if exists tpcds_raw.reason;
+          create external table tpcds_raw.reason (
+            r_reason_sk int,
+            r_reason_id string,
+            r_reason_desc string
+          )
+          row format delimited fields terminated by '|'
+          with serdeproperties ('field.delim'='|', 'serialization.format'='|')
+          stored as textfile
+          location '/user/hive/warehouse/external/tpcds_raw/reason'
+          tblproperties('serialization.null.format'='');
+
+          create database if not exists tpcds_parquet;
+          drop table if exists tpcds_parquet.reason;
+          create table tpcds_parquet.reason (
+            r_reason_sk int,
+            r_reason_id string,
+            r_reason_desc string
+          ) stored as parquet;
+          insert into tpcds_parquet.reason select * from tpcds_raw.reason;
+          compute stats tpcds_parquet.reason;
+          SQL
+      volumeMounts:
+        - name: impala-ca
+          mountPath: /etc/impala/tls
+          readOnly: true
+        - name: warehouse
+          mountPath: /user/hive/warehouse
+  volumes:
+    - name: impala-ca
+      secret:
+        secretName: impala-tls
+        items:
+          - key: ca.crt
+            path: ca.crt
+    - name: warehouse
+      persistentVolumeClaim:
+        claimName: impala-impala-warehouse
+YAML
+
+kubectl -n impala wait --for=condition=Ready pod/tpcds-reason-load --timeout=120s || true
+kubectl -n impala logs -f tpcds-reason-load
+EOF
+```
+
+### 4c.4 Load TPC-DS data into Kudu (from Parquet)
+Kudu requires primary keys and they must be the leading columns. This script
+creates Kudu tables with explicit primary keys and inserts data from Parquet.
+```bash
+ssh -i ${SSH_KEY} ${SSH_USER}@${HOST_IP} <<'EOF'
+kubectl -n impala delete pod tpcds-kudu-load --ignore-not-found
+cat <<'YAML' | kubectl -n impala apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tpcds-kudu-load
+spec:
+  restartPolicy: Never
+  containers:
+    - name: loader
+      image: apache/impala:4.5.0-impala_quickstart_client
+      command: ["/bin/bash","-lc"]
+      args:
+        - |
+          set -euo pipefail
+          impala() {
+            impala-shell --protocol=beeswax --ssl --ca_cert=/etc/impala/tls/ca.crt \
+              --ldap --user impalauser --ldap_password_cmd="echo -n impala123" \
+              -i impala-impala-impalad.impala.svc.cluster.local:21000 "$@"
+          }
+
+          declare -A pk
+          pk[call_center]=cc_call_center_sk
+          pk[catalog_page]=cp_catalog_page_sk
+          pk[catalog_returns]="cr_item_sk,cr_order_number"
+          pk[catalog_sales]="cs_item_sk,cs_order_number"
+          pk[customer]=c_customer_sk
+          pk[customer_address]=ca_address_sk
+          pk[customer_demographics]=cd_demo_sk
+          pk[date_dim]=d_date_sk
+          pk[household_demographics]=hd_demo_sk
+          pk[income_band]=ib_income_band_sk
+          pk[inventory]="inv_date_sk,inv_item_sk,inv_warehouse_sk"
+          pk[item]=i_item_sk
+          pk[promotion]=p_promo_sk
+          pk[ship_mode]=sm_ship_mode_sk
+          pk[store]=s_store_sk
+          pk[store_returns]="sr_item_sk,sr_ticket_number"
+          pk[store_sales]="ss_item_sk,ss_ticket_number"
+          pk[time_dim]=t_time_sk
+          pk[warehouse]=w_warehouse_sk
+          pk[web_page]=wp_web_page_sk
+          pk[web_returns]="wr_item_sk,wr_order_number"
+          pk[web_sales]="ws_item_sk,ws_order_number"
+          pk[web_site]=web_site_sk
+          pk[reason]=r_reason_sk
+
+          impala -q "create database if not exists tpcds_kudu";
+
+          for t in $(impala -B --quiet -q "show tables in tpcds_parquet"); do
+            pk_cols=${pk[$t]:-}
+            if [ -z "${pk_cols}" ]; then
+              echo "Missing primary key mapping for ${t}" >&2
+              exit 1
+            fi
+
+            describe=$(impala -B --quiet --output_delimiter=$'\t' -q "describe tpcds_parquet.${t}" | \
+              awk 'NF==0{exit} {print $1" " $2}')
+
+            unset col_type col_order
+            declare -A col_type
+            declare -a col_order
+            while read -r name type; do
+              col_type[$name]=$type
+              col_order+=("$name")
+            done <<< "${describe}"
+
+            IFS=',' read -r -a pk_list <<< "${pk_cols}"
+            create_cols=""
+            select_cols=""
+
+            for pk_col in "${pk_list[@]}"; do
+              if [ -z "${col_type[$pk_col]:-}" ]; then
+                echo "Missing column ${pk_col} in ${t}" >&2
+                exit 1
+              fi
+              create_cols+="${pk_col} ${col_type[$pk_col]},"
+              select_cols+="${pk_col},"
+            done
+
+            for col in "${col_order[@]}"; do
+              skip=0
+              for pk_col in "${pk_list[@]}"; do
+                if [ "${col}" = "${pk_col}" ]; then
+                  skip=1
+                fi
+              done
+              if [ ${skip} -eq 0 ]; then
+                create_cols+="${col} ${col_type[$col]},"
+                select_cols+="${col},"
+              fi
+            done
+
+            create_cols=${create_cols%,}
+            select_cols=${select_cols%,}
+
+            impala -q "drop table if exists tpcds_kudu.${t}";
+            impala -q "create table tpcds_kudu.${t} (${create_cols}, PRIMARY KEY (${pk_cols})) stored as kudu \
+              tblproperties (\"kudu.num_tablet_replicas\"=\"1\")";
+            impala -q "insert into tpcds_kudu.${t} (${select_cols}) select ${select_cols} from tpcds_parquet.${t}";
+          done
+      volumeMounts:
+        - name: impala-ca
+          mountPath: /etc/impala/tls
+          readOnly: true
+  volumes:
+    - name: impala-ca
+      secret:
+        secretName: impala-tls
+        items:
+          - key: ca.crt
+            path: ca.crt
+YAML
+
+kubectl -n impala wait --for=condition=Ready pod/tpcds-kudu-load --timeout=180s || true
+kubectl -n impala logs -f tpcds-kudu-load
+EOF
+```
+
+### 4c.5 Run TPC-DS queries against Kudu (from your laptop)
+```bash
+python3 - <<'PY'
+from pathlib import Path
+import re
+
+repo = Path('/Users/anubhav/Desktop/impala/testdata/workloads/tpcds/queries')
+out = Path('/Users/anubhav/Downloads/tpcds-kudu-queries.sql')
+queries = []
+
+files = [repo / 'count.test'] + sorted(repo.glob('tpcds-*.test'))
+for path in files:
+    text = path.read_text()
+    blocks = re.split(r"---- QUERY:.*?\n", text)[1:]
+    for block in blocks:
+        parts = re.split(r"\n---- RESULTS.*\n", block, maxsplit=1)
+        sql = parts[0]
+        sql = "\n".join(line for line in sql.splitlines()
+                        if not line.lstrip().startswith('#'))
+        sql = sql.strip()
+        if sql:
+            queries.append((path.name, sql))
+
+with out.open('w') as f:
+    f.write("use tpcds_kudu;\n")
+    f.write("set mt_dop=1;\n")
+    f.write("set mem_limit=3g;\n\n")
+    for name, sql in queries:
+        f.write(f"-- {name}\n")
+        f.write(sql.rstrip(';') + ';\n\n')
+
+print(out, "queries:", len(queries))
+PY
+
+RESULT=~/Downloads/tpcds-kudu-results.txt
+rm -f "$RESULT"
+impala-shell --protocol=beeswax --ssl --ca_cert=/Users/anubhav/Downloads/impala-ca.crt \
+  --ldap --user impalauser --ldap_password_cmd="echo -n impala123" \
+  -i impala-impala-impalad:21000 \
+  -f /Users/anubhav/Downloads/tpcds-kudu-queries.sql \
+  > "$RESULT"
+```
+
 ## Step 4d: Expose Impala with ingress-nginx TCP (portable)
 
 This option works on any Kubernetes cluster (bare metal included) if you
