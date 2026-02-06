@@ -1,0 +1,85 @@
+{{- $kudu := default dict .Values.kudu -}}
+{{- if $kudu.enabled }}
+{{- $master := default dict $kudu.master -}}
+{{- $tserver := default dict $kudu.tserver -}}
+{{- $tserverPersistence := default dict $tserver.persistence -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "impala.fullname" . }}-kudu-tserver
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  replicas: {{ default 1 $tserver.replicas }}
+  serviceName: {{ include "impala.kuduTserverService" . }}
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: {{ include "impala.name" . }}
+      app.kubernetes.io/component: kudu-tserver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/name: {{ include "impala.name" . }}
+        app.kubernetes.io/component: kudu-tserver
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      containers:
+        - name: kudu-tserver
+          image: {{ default "apache/kudu:1.17.0" $kudu.image }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          command:
+            - kudu
+          args:
+            - tserver
+            - run
+            - --fs_wal_dir=/var/lib/kudu/tserver
+            - --fs_data_dirs=/var/lib/kudu/tserver
+            - --tserver_master_addrs={{ include "impala.kuduMasterService" . }}:{{ default 7051 $master.rpcPort }}
+            - --rpc_bind_addresses=0.0.0.0:{{ default 7050 $tserver.rpcPort }}
+            - --rpc_advertised_addresses=$(POD_IP):{{ default 7050 $tserver.rpcPort }}
+            - --webserver_interface=0.0.0.0
+            - --webserver_port={{ default 8050 $tserver.webPort }}
+            - --logtostderr
+{{- range $tserver.extraArgs }}
+            - {{ . | quote }}
+{{- end }}
+          ports:
+            - name: rpc
+              containerPort: {{ default 7050 $tserver.rpcPort }}
+            - name: web
+              containerPort: {{ default 8050 $tserver.webPort }}
+          volumeMounts:
+            - name: kudu-tserver-data
+              mountPath: /var/lib/kudu/tserver
+          resources:
+{{ toYaml ($tserver.resources | default dict) | indent 12 }}
+      volumes:
+        - name: kudu-tserver-data
+{{- if (default false $tserverPersistence.enabled) }}
+          persistentVolumeClaim:
+            claimName: {{ include "impala.kuduTserverPvc" . }}
+{{- else }}
+          emptyDir: {}
+{{- end }}
+{{- end }}

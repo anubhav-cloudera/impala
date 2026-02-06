@@ -1,0 +1,40 @@
+{{- $kudu := default dict .Values.kudu -}}
+{{- $master := default dict $kudu.master -}}
+{{- $masterPersistence := default dict $master.persistence -}}
+{{- $tserver := default dict $kudu.tserver -}}
+{{- $tserverPersistence := default dict $tserver.persistence -}}
+{{- if and $kudu.enabled (default false $masterPersistence.enabled) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "impala.kuduMasterPvc" . }}
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  accessModes:
+{{ toYaml ($masterPersistence.accessModes | default (list "ReadWriteOnce")) | indent 4 }}
+  resources:
+    requests:
+      storage: {{ $masterPersistence.size | default "10Gi" }}
+  {{- if $masterPersistence.storageClassName }}
+  storageClassName: {{ $masterPersistence.storageClassName | quote }}
+  {{- end }}
+---
+{{- end }}
+{{- if and $kudu.enabled (default false $tserverPersistence.enabled) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "impala.kuduTserverPvc" . }}
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  accessModes:
+{{ toYaml ($tserverPersistence.accessModes | default (list "ReadWriteOnce")) | indent 4 }}
+  resources:
+    requests:
+      storage: {{ $tserverPersistence.size | default "10Gi" }}
+  {{- if $tserverPersistence.storageClassName }}
+  storageClassName: {{ $tserverPersistence.storageClassName | quote }}
+  {{- end }}
+{{- end }}

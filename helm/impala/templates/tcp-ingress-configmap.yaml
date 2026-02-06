@@ -1,0 +1,20 @@
+{{- if .Values.tcpIngress.enabled }}
+{{- $namespace := .Values.tcpIngress.namespace | default "ingress-nginx" -}}
+{{- $configMapName := .Values.tcpIngress.configMapName | default "tcp-services" -}}
+{{- $defaultSvc := printf "%s-impalad" (include "impala.fullname" .) -}}
+{{- $mappings := .Values.tcpIngress.mappings | default (list (dict "port" 21000 "serviceName" $defaultSvc "servicePort" 21000) (dict "port" 21050 "serviceName" $defaultSvc "servicePort" 21050)) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $configMapName }}
+  namespace: {{ $namespace }}
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+data:
+{{- range $mappings }}
+  {{- $port := .port | default 0 -}}
+  {{- if $port }}
+  {{ printf "%v" $port | quote }}: {{ printf "%s/%s:%v" $.Release.Namespace (tpl (.serviceName | default $defaultSvc) $) (.servicePort | default $port) | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}

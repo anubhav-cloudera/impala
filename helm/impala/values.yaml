@@ -97,3 +97,44 @@ ldapServer:
     accessModes:
       - ReadWriteOnce
     storageClassName: ""
+
+kudu:
+  enabled: false
+  image: apache/kudu:1.17.0
+  master:
+    replicas: 1
+    rpcPort: 7051
+    webPort: 8051
+    extraArgs:
+      - --default_num_replicas=1
+      - --rpc_authentication=disabled
+      - --rpc_encryption=disabled
+    resources: {}
+    persistence:
+      enabled: false
+      size: 10Gi
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: ""
+  tserver:
+    replicas: 1
+    rpcPort: 7050
+    webPort: 8050
+    extraArgs:
+      - --rpc_authentication=disabled
+      - --rpc_encryption=disabled
+    resources: {}
+    persistence:
+      enabled: false
+      size: 10Gi
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: ""
+
+tcpIngress:
+  enabled: false
+  namespace: ingress-nginx
+  configMapName: tcp-services
+  # Optional explicit mappings. If empty, defaults to impalad 21000/21050.
+  # serviceName supports templating, e.g. "{{ include \"impala.fullname\" . }}-impalad"
+  mappings: []

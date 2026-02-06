@@ -1,11 +1,15 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ include "impala.fullname" . }}-impalad
   labels:
 {{ include "impala.labels" . | indent 4 }}
 spec:
   replicas: 1
+  serviceName: {{ include "impala.fullname" . }}-impalad
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
   selector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}
@@ -73,8 +77,10 @@ spec:
             - -ldap_group_filter={{ .Values.auth.ldap.groupFilter }}
 {{- end }}
 {{- end }}
-{{- if .Values.impalad.kuduMasterHosts }}
-            - -kudu_master_hosts={{ .Values.impalad.kuduMasterHosts }}
+{{- $kudu := default dict .Values.kudu -}}
+{{- $kuduMaster := default dict $kudu.master -}}
+{{- if or .Values.impalad.kuduMasterHosts $kudu.enabled }}
+            - -kudu_master_hosts={{ .Values.impalad.kuduMasterHosts | default (printf "%s:%v" (include "impala.kuduMasterService" .) (default 7051 $kuduMaster.rpcPort)) }}
 {{- end }}
             - -mt_dop_auto_fallback={{ .Values.impalad.mtDopAutoFallback | default true }}
             - -default_query_options={{ .Values.impalad.defaultQueryOptions }}

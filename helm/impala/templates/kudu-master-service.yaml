@@ -1,0 +1,23 @@
+{{- $kudu := default dict .Values.kudu -}}
+{{- if $kudu.enabled }}
+{{- $master := default dict $kudu.master -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "impala.kuduMasterService" . }}
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/name: {{ include "impala.name" . }}
+    app.kubernetes.io/component: kudu-master
+  ports:
+    - name: rpc
+      port: {{ default 7051 $master.rpcPort }}
+      targetPort: rpc
+    - name: web
+      port: {{ default 8051 $master.webPort }}
+      targetPort: web
+{{- end }}

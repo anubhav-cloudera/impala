@@ -1,12 +1,16 @@
 {{- if .Values.ldapServer.enabled }}
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ include "impala.fullname" . }}-ldap
   labels:
 {{ include "impala.labels" . | indent 4 }}
 spec:
   replicas: 1
+  serviceName: {{ include "impala.fullname" . }}-ldap
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
   selector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}

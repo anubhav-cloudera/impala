@@ -23,3 +23,19 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
 {{- $prefix := .Values.image.prefix | default "" -}}
 {{- printf "%s%s" $prefix .imageName -}}
 {{- end -}}
+
+{{- define "impala.kuduMasterService" -}}
+{{- printf "%s-kudu-master" (include "impala.fullname" .) -}}
+{{- end -}}
+
+{{- define "impala.kuduTserverService" -}}
+{{- printf "%s-kudu-tserver" (include "impala.fullname" .) -}}
+{{- end -}}
+
+{{- define "impala.kuduMasterPvc" -}}
+{{- printf "%s-kudu-master" (include "impala.fullname" .) -}}
+{{- end -}}
+
+{{- define "impala.kuduTserverPvc" -}}
+{{- printf "%s-kudu-tserver" (include "impala.fullname" .) -}}
+{{- end -}}

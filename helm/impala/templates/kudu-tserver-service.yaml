@@ -1,0 +1,23 @@
+{{- $kudu := default dict .Values.kudu -}}
+{{- if $kudu.enabled }}
+{{- $tserver := default dict $kudu.tserver -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "impala.kuduTserverService" . }}
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/name: {{ include "impala.name" . }}
+    app.kubernetes.io/component: kudu-tserver
+  ports:
+    - name: rpc
+      port: {{ default 7050 $tserver.rpcPort }}
+      targetPort: rpc
+    - name: web
+      port: {{ default 8050 $tserver.webPort }}
+      targetPort: web
+{{- end }}

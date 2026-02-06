@@ -1,0 +1,83 @@
+{{- $kudu := default dict .Values.kudu -}}
+{{- if $kudu.enabled }}
+{{- $master := default dict $kudu.master -}}
+{{- $masterPersistence := default dict $master.persistence -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "impala.fullname" . }}-kudu-master
+  labels:
+{{ include "impala.labels" . | indent 4 }}
+spec:
+  replicas: {{ default 1 $master.replicas }}
+  serviceName: {{ include "impala.kuduMasterService" . }}
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: {{ include "impala.name" . }}
+      app.kubernetes.io/component: kudu-master
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/name: {{ include "impala.name" . }}
+        app.kubernetes.io/component: kudu-master
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      containers:
+        - name: kudu-master
+          image: {{ default "apache/kudu:1.17.0" $kudu.image }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          command:
+            - kudu
+          args:
+            - master
+            - run
+            - --fs_wal_dir=/var/lib/kudu/master
+            - --fs_data_dirs=/var/lib/kudu/master
+            - --rpc_bind_addresses=0.0.0.0:{{ default 7051 $master.rpcPort }}
+            - --rpc_advertised_addresses=$(POD_IP):{{ default 7051 $master.rpcPort }}
+            - --webserver_interface=0.0.0.0
+            - --webserver_port={{ default 8051 $master.webPort }}
+            - --logtostderr
+{{- range $master.extraArgs }}
+            - {{ . | quote }}
+{{- end }}
+          ports:
+            - name: rpc
+              containerPort: {{ default 7051 $master.rpcPort }}
+            - name: web
+              containerPort: {{ default 8051 $master.webPort }}
+          volumeMounts:
+            - name: kudu-master-data
+              mountPath: /var/lib/kudu/master
+          resources:
+{{ toYaml ($master.resources | default dict) | indent 12 }}
+      volumes:
+        - name: kudu-master-data
+{{- if (default false $masterPersistence.enabled) }}
+          persistentVolumeClaim:
+            claimName: {{ include "impala.kuduMasterPvc" . }}
+{{- else }}
+          emptyDir: {}
+{{- end }}
+{{- end }}

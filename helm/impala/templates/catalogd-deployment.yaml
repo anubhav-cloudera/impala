@@ -1,11 +1,15 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ include "impala.fullname" . }}-catalogd
   labels:
 {{ include "impala.labels" . | indent 4 }}
 spec:
   replicas: 1
+  serviceName: {{ include "impala.fullname" . }}-catalogd
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
   selector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}
@@ -39,6 +43,11 @@ spec:
             - -logtostderr
             - -v=1
             - -state_store_host={{ .Values.statestore.host | default (printf "%s-statestored" (include "impala.fullname" .)) }}
+{{- $kudu := default dict .Values.kudu -}}
+{{- $kuduMaster := default dict $kudu.master -}}
+{{- if or .Values.impalad.kuduMasterHosts $kudu.enabled }}
+            - -kudu_master_hosts={{ .Values.impalad.kuduMasterHosts | default (printf "%s:%v" (include "impala.kuduMasterService" .) (default 7051 $kuduMaster.rpcPort)) }}
+{{- end }}
             - -hms_event_polling_interval_s={{ .Values.catalogd.hmsEventPollingIntervalS }}
             - -invalidate_tables_timeout_s={{ .Values.catalogd.invalidateTablesTimeoutS }}
 {{- if .Values.auth.tls.enabled }}
