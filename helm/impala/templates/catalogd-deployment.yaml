@@ -57,6 +57,15 @@ spec:
             - -ssl_client_ca_certificate=/etc/impala/tls/{{ .Values.auth.tls.caFile }}
 {{- end }}
 {{- end }}
+{{- if .Values.auth.ranger.enabled }}
+            - -authorization_provider=ranger
+            - -ranger_service_type={{ .Values.auth.ranger.serviceType }}
+            - -ranger_app_id={{ .Values.auth.ranger.appId }}
+            - -server-name={{ .Values.auth.ranger.serverName }}
+{{- range .Values.auth.ranger.extraArgs }}
+            - {{ . | quote }}
+{{- end }}
+{{- end }}
 {{- range .Values.catalogd.extraArgs }}
             - {{ . | quote }}
 {{- end }}

@@ -77,6 +77,15 @@ spec:
             - -ldap_group_filter={{ .Values.auth.ldap.groupFilter }}
 {{- end }}
 {{- end }}
+{{- if .Values.auth.ranger.enabled }}
+            - -authorization_provider=ranger
+            - -ranger_service_type={{ .Values.auth.ranger.serviceType }}
+            - -ranger_app_id={{ .Values.auth.ranger.appId }}
+            - -server-name={{ .Values.auth.ranger.serverName }}
+{{- range .Values.auth.ranger.extraArgs }}
+            - {{ . | quote }}
+{{- end }}
+{{- end }}
 {{- $kudu := default dict .Values.kudu -}}
 {{- $kuduMaster := default dict $kudu.master -}}
 {{- if or .Values.impalad.kuduMasterHosts $kudu.enabled }}

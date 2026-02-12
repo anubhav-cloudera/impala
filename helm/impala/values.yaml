@@ -71,6 +71,13 @@ auth:
     userFilter: ""
     groupFilter: ""
     searchBindAuthentication: true
+  ranger:
+    enabled: false
+    # Enables Impala's Ranger authorization provider. Requires Ranger admin config.
+    serviceType: "hive"
+    appId: "impala"
+    serverName: "server1"
+    extraArgs: []
 
 ldapServer:
   enabled: false
@@ -97,6 +104,17 @@ ldapServer:
     accessModes:
       - ReadWriteOnce
     storageClassName: ""
+
+ranger:
+  enabled: false
+  # Ranger admin image (provide when enabling)
+  image: ""
+  imagePullPolicy: IfNotPresent
+  adminPort: 6080
+  service:
+    type: ClusterIP
+    port: 6080
+  env: {}
 
 kudu:
   enabled: false

@@ -250,6 +250,13 @@ helm upgrade --install impala /home/${SSH_USER}/impala-helm -n impala \
 EOF
 ```
 
+### 4c.1b Disable Kudu later (no extra pods)
+```bash
+ssh -i ${SSH_KEY} ${SSH_USER}@${HOST_IP} \
+  'helm upgrade impala /home/${SSH_USER}/impala-helm -n impala --reuse-values \
+   --set kudu.enabled=false'
+```
+
 ### 4c.2 Verify Kudu from Impala
 ```bash
 ssh -i ${SSH_KEY} ${SSH_USER}@${HOST_IP} \
@@ -500,6 +507,48 @@ impala-shell --protocol=beeswax --ssl --ca_cert=/Users/anubhav/Downloads/impala-
   -f /Users/anubhav/Downloads/tpcds-kudu-queries.sql \
   > "$RESULT"
 ```
+
+## Step 4e: Enable Ranger (optional)
+
+Ranger is **disabled by default**. You can deploy Ranger and enable Impala’s
+Ranger authorization provider with a Helm upgrade. This chart does not bundle
+a database for Ranger; supply an image/env that includes or points to a DB.
+
+### 4e.1 Enable Ranger deployment + Impala Ranger auth
+```bash
+ssh -i ${SSH_KEY} ${SSH_USER}@${HOST_IP} <<'EOF'
+cat <<'YAML' > /tmp/ranger-values.yaml
+auth:
+  ranger:
+    enabled: true
+    serviceType: "hive"
+    appId: "impala"
+    serverName: "server1"
+
+ranger:
+  enabled: true
+  image: "REPLACE_WITH_RANGER_ADMIN_IMAGE"
+  adminPort: 6080
+  env:
+    # Provide the required Ranger admin env for your image here
+    # Example:
+    # RANGER_ADMIN_PASSWORD: "admin"
+YAML
+
+helm upgrade impala /home/${SSH_USER}/impala-helm -n impala --reuse-values \
+  -f /tmp/ranger-values.yaml
+EOF
+```
+
+### 4e.2 Disable Ranger later
+```bash
+ssh -i ${SSH_KEY} ${SSH_USER}@${HOST_IP} \
+  'helm upgrade impala /home/${SSH_USER}/impala-helm -n impala --reuse-values \
+   --set auth.ranger.enabled=false --set ranger.enabled=false'
+```
+
+> Enabling/disabling Ranger or Kudu updates Impala flags and triggers a rolling
+> restart of `impalad` and `catalogd`.
 
 ## Step 4d: Expose Impala with ingress-nginx TCP (portable)
 
